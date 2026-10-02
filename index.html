@@ -41,6 +41,118 @@ body {
 input, textarea { user-select: text; -webkit-user-select: text; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
+/* ==========================================================
+   加载进度条页面
+   ========================================================== */
+.loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999999;
+    background: #050505;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    transition: opacity 0.65s ease;
+    opacity: 1;
+}
+.loader.hide {
+    opacity: 0;
+    pointer-events: none;
+}
+.loader-inner {
+    width: 340px;
+    max-width: 85vw;
+    text-align: center;
+    user-select: none;
+}
+.loader-logo {
+    font-size: 60px;
+    line-height: 1;
+    margin-bottom: 20px;
+    animation: loaderPulse 2s ease-in-out infinite;
+}
+@keyframes loaderPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.85; }
+}
+.loader-title {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #fff 0%, #a0a0a0 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.loader-sub {
+    font-size: 13px;
+    color: #6e6e73;
+    margin-bottom: 36px;
+    letter-spacing: 1px;
+}
+.loader-bar {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 16px;
+    position: relative;
+}
+.loader-bar-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, #0071e3 0%, #4facfe 50%, #00f2fe 100%);
+    border-radius: 2px;
+    transition: width 0.3s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 0 16px rgba(0,113,227,0.7);
+    position: relative;
+}
+.loader-bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+    animation: loaderShimmer 1.5s infinite;
+}
+@keyframes loaderShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+.loader-percent {
+    font-size: 30px;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 12px;
+    letter-spacing: 1px;
+}
+.loader-hint {
+    font-size: 12px;
+    color: #6e6e73;
+    height: 18px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+}
+.loader-dots::after {
+    content: '';
+    animation: loaderDots 1.4s steps(4, end) infinite;
+}
+@keyframes loaderDots {
+    0%, 20% { content: ''; }
+    40% { content: '.'; }
+    60% { content: '..'; }
+    80%, 100% { content: '...'; }
+}
+
 .site-bg-video {
     position: fixed; top: 0; left: 0;
     width: 100vw; height: 100vh;
@@ -741,6 +853,19 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 </head>
 <body>
 
+<div class="loader" id="loader">
+    <div class="loader-inner">
+        <div class="loader-logo">🎮</div>
+        <div class="loader-title">PCL 商店</div>
+        <div class="loader-sub">正在加载资源<span class="loader-dots"></span></div>
+        <div class="loader-bar">
+            <div class="loader-bar-fill" id="loaderBarFill"></div>
+        </div>
+        <div class="loader-percent" id="loaderPercent">0%</div>
+        <div class="loader-hint" id="loaderHint">准备中</div>
+    </div>
+</div>
+
 <div class="mobile-blocker" id="mobileBlocker">
     <div class="error-icon">⚠️</div>
     <div class="error-title">系统不兼容</div>
@@ -1050,7 +1175,7 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 })();
 
 /* ==========================================================
-   开发者工具快捷键拦截（静默阻止）
+   开发者工具快捷键拦截
    ========================================================== */
 (function () {
     document.addEventListener('contextmenu', function (e) {
@@ -1076,7 +1201,223 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 })();
 
 /* ==========================================================
-   账号信息 —— 全部走后端 API，前端不存明文密码
+   预加载 + 缓存
+   ========================================================== */
+var CACHE_NAME = 'pcl-assets-v1';
+var PRELOAD_ASSETS = [
+    '打开网站的视频.mp4',
+    '主界面网站背景.mp4',
+    '背景音乐.mp4',
+    '封面.png',
+    '页面图片.png',
+    '机械狂魔症封面.png',
+    '神秘美图2.jpg',
+    '微信收款码.png',
+    '支付宝收款码.png.jpg'
+];
+var blobURLs = new Map();
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+function updateLoader(percent, hint) {
+    var bar = document.getElementById('loaderBarFill');
+    var pct = document.getElementById('loaderPercent');
+    var hintEl = document.getElementById('loaderHint');
+    if (bar) bar.style.width = percent + '%';
+    if (pct) pct.textContent = percent + '%';
+    if (hintEl && hint) hintEl.textContent = hint;
+}
+
+async function setCachedSrc(el, url) {
+    if (!el) return;
+    try {
+        var cache = await caches.open(CACHE_NAME);
+        var res = await cache.match(url);
+        if (res) {
+            var blob = await res.blob();
+            var blobUrl = URL.createObjectURL(blob);
+            blobURLs.set(url, blobUrl);
+            el.src = blobUrl;
+            return;
+        }
+    } catch (e) {}
+    el.src = url;
+}
+
+async function preloadAll() {
+    var cache = await caches.open(CACHE_NAME);
+    var totalSize = 0;
+    var loadedSize = 0;
+    var loadedCount = 0;
+    var totalCount = PRELOAD_ASSETS.length;
+
+    // 第一步：检查缓存 + 获取大小
+    for (var i = 0; i < PRELOAD_ASSETS.length; i++) {
+        var url = PRELOAD_ASSETS[i];
+        try {
+            var cached = await cache.match(url);
+            if (cached) {
+                var blob = await cached.blob();
+                totalSize += blob.size;
+                loadedSize += blob.size;
+                loadedCount++;
+            } else {
+                try {
+                    var head = await fetch(url, { method: 'HEAD' });
+                    var len = parseInt(head.headers.get('Content-Length') || '0', 10);
+                    if (len > 0) totalSize += len;
+                    else totalSize += 1024 * 1024;
+                } catch (e) {
+                    totalSize += 1024 * 1024;
+                }
+            }
+        } catch (e) {}
+    }
+
+    function getPercent() {
+        if (totalSize > 0) {
+            return Math.min(100, Math.round(loadedSize / totalSize * 100));
+        } else {
+            return Math.min(100, Math.round(loadedCount / totalCount * 100));
+        }
+    }
+
+    updateLoader(getPercent(), '准备中');
+    await sleep(100);
+
+    // 第二步：下载缺失的
+    for (var j = 0; j < PRELOAD_ASSETS.length; j++) {
+        var url2 = PRELOAD_ASSETS[j];
+        var cached2 = await cache.match(url2);
+        if (cached2) {
+            updateLoader(getPercent(), '已缓存: ' + url2);
+            continue;
+        }
+
+        try {
+            var res2 = await fetch(url2);
+            if (!res2.ok) throw new Error('HTTP ' + res2.status);
+
+            var resForCache = res2.clone();
+            var cachePromise = cache.put(url2, resForCache);
+
+            var reader = res2.body.getReader();
+            while (true) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                loadedSize += chunk.value.length;
+                updateLoader(getPercent(), '下载中: ' + url2);
+            }
+
+            await cachePromise;
+            loadedCount++;
+            updateLoader(getPercent(), '已完成: ' + url2);
+        } catch (e) {
+            loadedCount++;
+            loadedSize += 1024 * 1024;
+            updateLoader(getPercent(), '跳过: ' + url2);
+        }
+    }
+
+    updateLoader(100, '加载完成');
+}
+
+/* ==========================================================
+   启动流程
+   ========================================================== */
+async function boot() {
+    if (isMobile) return;
+
+    try {
+        await preloadAll();
+    } catch (e) {
+        // 预加载失败也要继续
+    }
+
+    updateLoader(100, '加载完成，正在进入');
+    await sleep(500);
+
+    // 从缓存里拿资源给 video/audio 用
+    await setCachedSrc(document.getElementById('introVideo'), '打开网站的视频.mp4');
+    await setCachedSrc(document.querySelector('.site-bg-video'), '主界面网站背景.mp4');
+    await setCachedSrc(document.getElementById('bgMusic'), '背景音乐.mp4');
+
+    // 隐藏加载器
+    var loader = document.getElementById('loader');
+    if (loader) {
+        loader.classList.add('hide');
+        await sleep(700);
+        loader.style.display = 'none';
+    }
+
+    // 开始播放开场视频
+    startIntroSequence();
+}
+
+function startIntroSequence() {
+    var introC = document.getElementById('introContainer');
+    var introV = document.getElementById('introVideo');
+    var wrap = document.getElementById('siteWrapper');
+    var bg = document.getElementById('bgMusic');
+
+    function playMusic() {
+        if (!isIntroFinished) return;
+        if (localStorage.getItem('pcl_music_on') === 'false') return;
+        if (bg.paused) bg.play().catch(function () {});
+    }
+
+    introV.muted = false;
+    introV.volume = 1.0;
+    introV.play().catch(function () {
+        introV.muted = true;
+        introV.play().catch(function () {});
+    });
+
+    document.body.addEventListener('click', function unlock() {
+        if (!introV.paused && introV.muted) {
+            introV.muted = false;
+            introV.volume = 1.0;
+            introV.play();
+        }
+        playMusic();
+    }, { once: true });
+
+    introV.addEventListener('ended', function () {
+        isIntroFinished = true;
+        introC.style.transform = 'translateY(100%)';
+        introC.style.opacity = '0';
+        wrap.classList.add('show');
+        setTimeout(function () {
+            introC.style.display = 'none';
+            playMusic();
+        }, 1200);
+    });
+
+    introV.addEventListener('error', function () {
+        isIntroFinished = true;
+        introC.style.display = 'none';
+        wrap.classList.add('show');
+        playMusic();
+    });
+
+    setTimeout(function () {
+        if (introC.style.display !== 'none') {
+            isIntroFinished = true;
+            introC.style.transform = 'translateY(100%)';
+            introC.style.opacity = '0';
+            wrap.classList.add('show');
+            setTimeout(function () {
+                introC.style.display = 'none';
+                playMusic();
+            }, 1200);
+        }
+    }, 20000);
+
+    refreshUI();
+}
+
+/* ==========================================================
+   账号信息
    ========================================================== */
 var API_BASE = 'https://pcl-777.foam185823.deno.net';
 var API_LOGIN    = API_BASE + '/api/login';
@@ -1268,6 +1609,8 @@ var isIntroFinished = false;
 
 var isMobile = /(Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|HarmonyOS|Mobile|Windows Phone)/i.test(navigator.userAgent);
 if (isMobile) {
+    var loaderEl = document.getElementById('loader');
+    if (loaderEl) loaderEl.style.display = 'none';
     document.getElementById('mobileBlocker').style.display = 'flex';
     document.body.style.overflow = 'hidden';
     document.querySelector('.site-wrapper').style.display = 'none';
@@ -1415,7 +1758,6 @@ function showProfileMsg(id, text, ok) {
     setTimeout(function () { el.className = 'profile-msg'; }, 4000);
 }
 
-/* -------- 改名字（先验证密码） -------- */
 function saveNewName() {
     var u = getCurrentUser();
     if (!u) return;
@@ -1461,7 +1803,6 @@ function saveNewName() {
     });
 }
 
-/* -------- 改密码（先验证旧密码） -------- */
 function saveNewPassword() {
     var u = getCurrentUser();
     if (!u) return;
@@ -1534,62 +1875,11 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 /* ==========================================================
-   开场视频 & 背景音乐
+   启动
    ========================================================== */
 window.addEventListener('DOMContentLoaded', function () {
     if (isMobile) return;
-    var introC = document.getElementById('introContainer');
-    var introV = document.getElementById('introVideo');
-    var wrap = document.getElementById('siteWrapper');
-    var bg = document.getElementById('bgMusic');
-    function playMusic() {
-        if (!isIntroFinished) return;
-        if (localStorage.getItem('pcl_music_on') === 'false') return;
-        if (bg.paused) bg.play().catch(function () {});
-    }
-    introV.muted = false;
-    introV.volume = 1.0;
-    introV.play().catch(function () {
-        introV.muted = true;
-        introV.play().catch(function () {});
-    });
-    document.body.addEventListener('click', function unlock() {
-        if (!introV.paused && introV.muted) {
-            introV.muted = false;
-            introV.volume = 1.0;
-            introV.play();
-        }
-        playMusic();
-    }, { once: true });
-    introV.addEventListener('ended', function () {
-        isIntroFinished = true;
-        introC.style.transform = 'translateY(100%)';
-        introC.style.opacity = '0';
-        wrap.classList.add('show');
-        setTimeout(function () {
-            introC.style.display = 'none';
-            playMusic();
-        }, 1200);
-    });
-    introV.addEventListener('error', function () {
-        isIntroFinished = true;
-        introC.style.display = 'none';
-        wrap.classList.add('show');
-        playMusic();
-    });
-    setTimeout(function () {
-        if (introC.style.display !== 'none') {
-            isIntroFinished = true;
-            introC.style.transform = 'translateY(100%)';
-            introC.style.opacity = '0';
-            wrap.classList.add('show');
-            setTimeout(function () {
-                introC.style.display = 'none';
-                playMusic();
-            }, 1200);
-        }
-    }, 15000);
-    refreshUI();
+    boot();
 });
 
 /* ==========================================================
