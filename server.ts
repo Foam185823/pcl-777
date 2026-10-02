@@ -2,7 +2,6 @@ import { serveDir } from "https://deno.land/std@0.224.0/http/file_server.ts";
 
 const kv = await Deno.openKv();
 
-// UTF-8 安全的 base64 编码，能处理中文
 function safeBtoa(str) {
   const bytes = new TextEncoder().encode(str);
   let bin = "";
@@ -25,6 +24,11 @@ async function initKV() {
   }
 }
 await initKV();
+
+const DOWNLOAD_LINKS = {
+  "1": "https://ts.buzzheavier.com/d/fgcgegjzwb7l?v=jtyg7mrBHauwbjAikYEcZ_Kk3M-yPY4J8D1Aqr4wU5nwokc7L91kLk8s7DoQCyHjWYAHIRzvo_xgM8dJBDUsinsNKSf9lKAQl_Q9iCoPkglBxwX2iXWDiRL2LS3Ak_6EclryZiOxYM8887jkLG65Fo7HXAoDpK1zwON4EWSDelqhGz9Y9t2JC45LVX3iYGPEMB96iuTaPc7DirQQo_S-gQLFyr6FJu2ZgvEo-b8bJUqdQ8o",
+  "2": "https://ts.buzzheavier.com/d/n2a2oq4on9s4?v=qN-j-c7ujAatgxrkPCGyHFHB1ZDpKKMTNZefkDSZA4ZmsK2WFPzdaktwbAma67w7QgBYBv27l38z1AXfZz-kRNIV30XMZvjmCbvWir6bgZhkkvbutXgWYh9aMma0RvbtBo8P1FWnOLMuoypCMBuaB2FTFMJaxr3k3CR1XUlu-a1Nywfn_oU0aNLGl9pYOvM5IKiZG1XQtsJ8Z5JTKvMxpLteeMgEeJtMCuKeKeYhzJa5EZjkY1mRsdaomQT4w7BhDLSXi5NbDYGH1YjCLg"
+};
 
 function jsonResp(data, cors, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -116,6 +120,22 @@ Deno.serve(async (req) => {
       const updated = { ...owner.value, password: String(newPassword) };
       await kv.set(["user", "owner"], updated);
       return jsonResp({ success: true, message: "密码已修改成功" }, cors);
+    } catch (e) {
+      return jsonResp({ success: false, message: "服务器异常: " + (e && e.message || String(e)) }, cors, 500);
+    }
+  }
+
+  if (url.pathname === "/api/download" && req.method === "POST") {
+    try {
+      const { id, token } = await req.json();
+      if (!token) {
+        return jsonResp({ success: false, message: "未登录，无法下载" }, cors, 401);
+      }
+      const link = DOWNLOAD_LINKS[String(id)];
+      if (!link) {
+        return jsonResp({ success: false, message: "未找到该项目的下载链接" }, cors, 404);
+      }
+      return jsonResp({ success: true, url: link }, cors);
     } catch (e) {
       return jsonResp({ success: false, message: "服务器异常: " + (e && e.message || String(e)) }, cors, 500);
     }
