@@ -1,0 +1,141 @@
+import { serveDir } from "https://deno.land/std@0.224.0/http/file_server.ts";
+
+const kv = await Deno.openKv();
+
+async function initKV() {
+  const owner = await kv.get(["user", "owner"]);
+  if (!owner.value) {
+    const OWNER_QQ = Deno.env.get("OWNER_QQ") || "";
+    const OWNER_PWD = Deno.env.get("OWNER_PWD") || "";
+    await kv.set(["user", "owner"], {
+      qq: OWNER_QQ,
+      password: OWNER_PWD,
+      name: "快乐的小宝",
+    });
+  }
+}
+await initKV();
+
+function jsonResp(data: unknown, cors: Record<string, string>, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...cors },
+  });
+}
+
+Deno.serve(async (req) => {
+  const url = new URL(req.url);
+  const cors = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: cors });
+  }
+
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    try {
+      const { qq, password } = await req.json();
+      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
+
+      if (owner.value && owner.value.qq === qq && owner.value.password === password) {
+        const user = { qq: owner.value.qq, name: owner.value.name, isOwner: true };
+        const token = btoa(JSON.stringify(user) + "::" + Date.now());
+        return jsonResp({ success: true, user, token }, cors);
+      }
+
+      const GUEST_QQ = Deno.env.get("GUEST_QQ");
+      const GUEST_PWD = Deno.env.get("GUEST_PWD");
+      if (GUEST_QQ && qq === GUEST_QQ && password === GUEST_PWD) {
+        const user = { qq: GUEST_QQ, name: "用户1", isOwner: false };
+        const token = btoa(JSON.stringify(user) + "::" + Date.now());
+        return jsonResp({ success: true, user, token }, cors);
+      }
+
+      return jsonResp({ success: false, message: "账号或密码错误" }, cors);
+    } catch {
+      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+    }
+  }
+
+  if (url.pathname === "/api/rename" && req.method === "POST") {
+    try {
+      const { qq, password, newName } = await req.json();
+      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
+
+      if (!owner.value || owner.value.qq !== qq || owner.value.password !== password) {
+        return jsonResp({ success: false, message: "密码错误" }, cors);
+      }
+      if (!newName || String(newName).trim().length === 0) {
+        return jsonResp({ success: false, message: "名字不能为空" }, cors);
+      }
+      if (String(newName).length > 20) {
+        return jsonResp({ success: false, message: "名字不能超过 20 个字" }, cors);
+      }
+
+      const updated = { ...owner.value, name: String(newName).trim() };
+      await kv.set(["user", "owner"], updated);
+      const user = { qq: updated.qq, name: updated.name, isOwner: true };
+      const token = btoa(JSON.stringify(user) + "::" + Date.now());
+      return jsonResp({ success: true, user, token, message: "名字已更新" }, cors);
+    } catch {
+      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+    }
+  }
+
+  if (url.pathname === "/api/password" && req.method === "POST") {
+    try {
+      const { qq, oldPassword, newPassword } = await req.json();
+      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
+
+      if (!owner.value || owner.value.qq !== qq || owner.value.password !== oldPassword) {
+        return jsonResp({ success: false, message: "旧密码错误" }, cors);
+      }
+      if (!newPassword || String(newPassword).length < 6) {
+        return jsonResp({ success: false, message: "新密码至少 6 位" }, cors);
+      }
+      if (/[\u4e00-\u9fa5]/.test(String(newPassword))) {
+        return jsonResp({ success: false, message: "密码不能包含中文" }, cors);
+      }
+      if (String(newPassword) === owner.value.password) {
+        return jsonResp({ success: false, message: "新密码不能和旧密码一样" }, cors);
+      }
+
+      const updated = { ...owner.value, password: String(newPassword) };
+      await kv.set(["user", "owner"], updated);
+      return jsonResp({ success: true, message: "密码已修改成功" }, cors);
+    } catch {
+      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+    }
+  }
+
+  // ============ 静态文件（带缓存头，第二次打开就秒开） ============
+  const res = await serveDir(req, {
+    fsRoot: ".",
+    showDirListing: false,
+    quiet: true,
+  });
+
+  const path = url.pathname.toLowerCase();
+  const newHeaders = new Headers(res.headers);
+
+  // 视频 / 音频 / 图片 → 缓存 7 天
+  if (/\.(mp4|webm|mp3|wav|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2)$/i.test(path)) {
+    newHeaders.set("Cache-Control", "public, max-age=604800, immutable");
+  }
+  // HTML → 不缓存，保证每次拿到最新的
+  else if (/\.(html|htm)$/i.test(path) || path === "/") {
+    newHeaders.set("Cache-Control", "no-cache");
+  }
+  // 其他（JS/CSS）→ 缓存 1 天
+  else {
+    newHeaders.set("Cache-Control", "public, max-age=86400");
+  }
+
+  return new Response(res.body, {
+    status: res.status,
+    headers: newHeaders,
+  });
+});
