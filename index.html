@@ -354,22 +354,19 @@ input, textarea { user-select: text; -webkit-user-select: text; }
 .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; width: 100%; }
 
 .card {
-    background: var(--card); border-radius: var(--r-md); overflow: hidden;
-    cursor: pointer; transition: transform var(--t-base), box-shadow var(--t-base), opacity var(--t-fast);
-    box-shadow: var(--shadow-sm); position: relative;
+    background: var(--card);
+    border-radius: 20px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform var(--t-base), box-shadow var(--t-base), opacity var(--t-fast);
+    box-shadow: var(--shadow-sm);
+    border: 2px solid rgba(255,255,255,0.95);
+    position: relative;
 }
-.card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
-.card img { width: 100%; aspect-ratio: 1/1; object-fit: cover; display: block; transition: transform 0.5s; }
-.card:hover img { transform: scale(1.03); }
-.card-info { padding: 8px 10px 10px; }
-.card-title {
-    font-size: 13px; font-weight: 600; margin-bottom: 4px; line-height: 1.3;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.card-tags { display: flex; flex-wrap: wrap; gap: 3px; }
-.card-tags span {
-    font-size: 10px; padding: 1px 6px; background: #f0f0f5;
-    border-radius: 4px; color: var(--text-sub); white-space: nowrap;
+.card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+    border-color: #fff;
 }
 .card .lock-hint {
     position: absolute; top: 8px; right: 8px;
@@ -1141,9 +1138,6 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 <audio id="bgMusic" loop></audio>
 
 <script>
-/* ==========================================================
-   本地打开检测
-   ========================================================== */
 (function () {
     if (location.protocol === 'file:') {
         document.documentElement.innerHTML =
@@ -1172,9 +1166,6 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
     }
 })();
 
-/* ==========================================================
-   开发者工具快捷键拦截
-   ========================================================== */
 (function () {
     document.addEventListener('contextmenu', function (e) {
         e.preventDefault();
@@ -1198,9 +1189,6 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
     });
 })();
 
-/* ==========================================================
-   预加载 + 缓存（只加载 3 个核心文件）
-   ========================================================== */
 var CACHE_NAME = 'pcl-assets-v3';
 var PRELOAD_ASSETS = [
     '打开网站的视频.mp4',
@@ -1229,7 +1217,6 @@ async function preloadAll() {
 
     updateLoader(1, '检查资源...');
 
-    // 阶段一：算总大小
     for (var i = 0; i < PRELOAD_ASSETS.length; i++) {
         var url = PRELOAD_ASSETS[i];
         try {
@@ -1266,7 +1253,6 @@ async function preloadAll() {
     updateLoader(getPercent(), '开始下载...');
     await sleep(100);
 
-    // 阶段二：下载缺失的
     for (var j = 0; j < PRELOAD_ASSETS.length; j++) {
         var url2 = PRELOAD_ASSETS[j];
         var cached2 = await cache.match(url2);
@@ -1317,9 +1303,6 @@ async function setSrcFromCache(el, url) {
     el.src = url;
 }
 
-/* ==========================================================
-   启动流程
-   ========================================================== */
 async function boot() {
     if (isMobile) return;
 
@@ -1415,9 +1398,6 @@ function startIntroSequence() {
     refreshUI();
 }
 
-/* ==========================================================
-   账号信息
-   ========================================================== */
 var API_BASE = 'https://pcl-777.foam185823.deno.net';
 var API_LOGIN    = API_BASE + '/api/login';
 var API_RENAME   = API_BASE + '/api/rename';
@@ -1442,9 +1422,6 @@ function saveLogin(v) {
     }
 }
 
-/* ==========================================================
-   设置面板
-   ========================================================== */
 var settingsOpen = false;
 function toggleSettings() {
     var panel = document.getElementById('settingsPanel');
@@ -1503,9 +1480,6 @@ function changeVolume() {
     }
 })();
 
-/* ==========================================================
-   商品数据
-   ========================================================== */
 var PRODUCTS = [
     {
         id: 1,
@@ -1616,9 +1590,6 @@ if (isMobile) {
     document.querySelector('.site-bg-video').style.display = 'none';
 }
 
-/* ==========================================================
-   登录系统
-   ========================================================== */
 function openLogin(reason) {
     var r = document.getElementById('loginReason');
     if (reason) {
@@ -1717,9 +1688,6 @@ document.getElementById('loginPassword').addEventListener('keydown', function (e
 function openRegister() { document.getElementById('registerModal').classList.add('show'); }
 function closeRegister() { document.getElementById('registerModal').classList.remove('show'); }
 
-/* ==========================================================
-   个人信息弹窗
-   ========================================================== */
 function openProfile() {
     if (!isLoggedIn()) { openLogin('请先登录'); return; }
     var u = getCurrentUser();
@@ -1841,9 +1809,6 @@ function saveNewPassword() {
     });
 }
 
-/* ==========================================================
-   悬停聚焦
-   ========================================================== */
 document.addEventListener('DOMContentLoaded', function () {
     if (isMobile) return;
     var sels = '.card, .tag, .pagination button, .feedback-btn, .primary-btn, ' +
@@ -1871,17 +1836,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 
-/* ==========================================================
-   启动
-   ========================================================== */
 window.addEventListener('DOMContentLoaded', function () {
     if (isMobile) return;
     boot();
 });
 
-/* ==========================================================
-   标签渲染
-   ========================================================== */
 var ALL_TAGS = [
     "免费", "枪战竞技", "PCL整合包", "模拟", "现实", "枪战",
     "多人游戏", "红薯窝", "恐怖", "生存", "冒险", "建筑",
@@ -1905,9 +1864,6 @@ function toggleTag(tag) {
     renderCards();
 }
 
-/* ==========================================================
-   商品渲染
-   ========================================================== */
 function getStrictFiltered() {
     return PRODUCTS.filter(function (p) {
         var okT = activeTags.length === 0 || activeTags.every(function (t) { return p.tags.includes(t); });
@@ -1978,9 +1934,6 @@ document.getElementById("searchInput").addEventListener("keydown", function (e) 
     if (e.key === "Enter") doSearch();
 });
 
-/* ==========================================================
-   分页
-   ========================================================== */
 function prevPage(n) {
     var total = Math.max(1, Math.ceil(getStrictFiltered().length / PER_PAGE));
     if (currentPage <= 1) { showToast("已达到最高页"); return; }
@@ -2000,17 +1953,11 @@ function showToast(msg) {
     setTimeout(function () { t.classList.remove("show"); }, 2000);
 }
 
-/* ==========================================================
-   反馈 / 发布
-   ========================================================== */
 function openFeedback() { document.getElementById("feedbackModal").classList.add("show"); }
 function closeFeedback() { document.getElementById("feedbackModal").classList.remove("show"); }
 function openPublish() { document.getElementById("publishModal").classList.add("show"); }
 function closePublish() { document.getElementById("publishModal").classList.remove("show"); }
 
-/* ==========================================================
-   详情页
-   ========================================================== */
 function openDetail(id) {
     if (!isLoggedIn()) {
         openLogin('需要登录后才能查看项目详情，请先登录再点击查看');
@@ -2047,9 +1994,6 @@ function closeDetail() {
     document.body.style.overflow = "";
 }
 
-/* ==========================================================
-   图片轮播
-   ========================================================== */
 function openCarousel() {
     if (!currentProduct || !currentProduct.images || !currentProduct.images.length) return;
     carouselIndex = 0;
@@ -2076,9 +2020,6 @@ function prevImg() {
 }
 function closeCarousel() { document.getElementById("carousel").style.display = "none"; }
 
-/* ==========================================================
-   赞助 / 收款码
-   ========================================================== */
 function openSponsor() {
     if (!isLoggedIn()) { openLogin('需要登录后才能下载，请先登录再下载'); return; }
     document.getElementById("sponsorPage").classList.add("show");
@@ -2090,9 +2031,6 @@ function showQR(type) {
 }
 function closeQR() { document.getElementById("qrPage").classList.remove("show"); }
 
-/* ==========================================================
-   下载页
-   ========================================================== */
 function openDownload() {
     if (!isLoggedIn()) { openLogin('需要登录后才能下载，请先登录再下载'); return; }
     document.getElementById("sponsorPage").classList.remove("show");
@@ -2153,9 +2091,6 @@ function startCountdown() {
     }, 1000);
 }
 
-/* ==========================================================
-   核心下载逻辑
-   ========================================================== */
 function forceAnchorDownload(href, fileName) {
     var a = document.createElement("a");
     a.href = href;
