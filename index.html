@@ -158,6 +158,7 @@ input, textarea { user-select: text; -webkit-user-select: text; }
     width: 100vw; height: 100vh;
     object-fit: cover; z-index: -1; pointer-events: none;
     filter: brightness(0.75);
+    background: #000;
 }
 .intro-container {
     position: fixed; inset: 0; z-index: 9999; background: #000;
@@ -878,10 +879,10 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
     <button class="error-btn" onclick="alert('请在电脑端访问本网站！')">我已知晓</button>
 </div>
 
-<video class="site-bg-video" src="主界面网站背景.mp4" autoplay muted loop playsinline></video>
+<video class="site-bg-video" id="bgVideo" muted loop playsinline></video>
 
 <div class="intro-container" id="introContainer">
-    <video id="introVideo" src="打开网站的视频.mp4" autoplay playsinline></video>
+    <video id="introVideo" playsinline></video>
 </div>
 
 <div class="site-wrapper" id="siteWrapper">
@@ -1140,7 +1141,7 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
     </div>
 </div>
 
-<audio id="bgMusic" src="背景音乐.mp4" loop></audio>
+<audio id="bgMusic" loop></audio>
 
 <script>
 /* ==========================================================
@@ -1203,7 +1204,7 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 /* ==========================================================
    预加载 + 缓存
    ========================================================== */
-var CACHE_NAME = 'pcl-assets-v1';
+var CACHE_NAME = 'pcl-assets-v2';
 var PRELOAD_ASSETS = [
     '打开网站的视频.mp4',
     '主界面网站背景.mp4',
@@ -1215,43 +1216,29 @@ var PRELOAD_ASSETS = [
     '微信收款码.png',
     '支付宝收款码.png.jpg'
 ];
-var blobURLs = new Map();
 
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
 function updateLoader(percent, hint) {
+    var p = Math.max(0, Math.min(100, Math.round(percent)));
     var bar = document.getElementById('loaderBarFill');
     var pct = document.getElementById('loaderPercent');
     var hintEl = document.getElementById('loaderHint');
-    if (bar) bar.style.width = percent + '%';
-    if (pct) pct.textContent = percent + '%';
+    if (bar) bar.style.width = p + '%';
+    if (pct) pct.textContent = p + '%';
     if (hintEl && hint) hintEl.textContent = hint;
-}
-
-async function setCachedSrc(el, url) {
-    if (!el) return;
-    try {
-        var cache = await caches.open(CACHE_NAME);
-        var res = await cache.match(url);
-        if (res) {
-            var blob = await res.blob();
-            var blobUrl = URL.createObjectURL(blob);
-            blobURLs.set(url, blobUrl);
-            el.src = blobUrl;
-            return;
-        }
-    } catch (e) {}
-    el.src = url;
 }
 
 async function preloadAll() {
     var cache = await caches.open(CACHE_NAME);
     var totalSize = 0;
     var loadedSize = 0;
-    var loadedCount = 0;
     var totalCount = PRELOAD_ASSETS.length;
+    var loadedCount = 0;
 
-    // 第一步：检查缓存 + 获取大小
+    updateLoader(1, '检查资源...');
+
+    // 阶段一：算总大小
     for (var i = 0; i < PRELOAD_ASSETS.length; i++) {
         var url = PRELOAD_ASSETS[i];
         try {
@@ -1264,28 +1251,31 @@ async function preloadAll() {
             } else {
                 try {
                     var head = await fetch(url, { method: 'HEAD' });
-                    var len = parseInt(head.headers.get('Content-Length') || '0', 10);
-                    if (len > 0) totalSize += len;
-                    else totalSize += 1024 * 1024;
+                    var cl = parseInt(head.headers.get('Content-Length') || '0', 10);
+                    totalSize += cl > 0 ? cl : (2 * 1024 * 1024);
                 } catch (e) {
-                    totalSize += 1024 * 1024;
+                    totalSize += 2 * 1024 * 1024;
                 }
             }
-        } catch (e) {}
-    }
-
-    function getPercent() {
-        if (totalSize > 0) {
-            return Math.min(100, Math.round(loadedSize / totalSize * 100));
-        } else {
-            return Math.min(100, Math.round(loadedCount / totalCount * 100));
+        } catch (e) {
+            totalSize += 2 * 1024 * 1024;
         }
     }
 
-    updateLoader(getPercent(), '准备中');
+    function getPercent() {
+        if (totalSize > 0 && loadedSize > 0) {
+            return Math.min(99, Math.round(loadedSize / totalSize * 100));
+        }
+        if (totalCount > 0) {
+            return Math.min(99, Math.round(loadedCount / totalCount * 100));
+        }
+        return 1;
+    }
+
+    updateLoader(getPercent(), '开始下载...');
     await sleep(100);
 
-    // 第二步：下载缺失的
+    // 阶段二：下载缺失的
     for (var j = 0; j < PRELOAD_ASSETS.length; j++) {
         var url2 = PRELOAD_ASSETS[j];
         var cached2 = await cache.match(url2);
@@ -1314,12 +1304,26 @@ async function preloadAll() {
             updateLoader(getPercent(), '已完成: ' + url2);
         } catch (e) {
             loadedCount++;
-            loadedSize += 1024 * 1024;
+            loadedSize += 2 * 1024 * 1024;
             updateLoader(getPercent(), '跳过: ' + url2);
         }
     }
 
     updateLoader(100, '加载完成');
+}
+
+async function setSrcFromCache(el, url) {
+    if (!el) return;
+    try {
+        var cache = await caches.open(CACHE_NAME);
+        var res = await cache.match(url);
+        if (res) {
+            var blob = await res.blob();
+            el.src = URL.createObjectURL(blob);
+            return;
+        }
+    } catch (e) {}
+    el.src = url;
 }
 
 /* ==========================================================
@@ -1331,16 +1335,21 @@ async function boot() {
     try {
         await preloadAll();
     } catch (e) {
-        // 预加载失败也要继续
+        console.error('预加载失败:', e);
     }
 
+    // 100% 后停一下，让用户看到
     updateLoader(100, '加载完成，正在进入');
-    await sleep(500);
+    await sleep(600);
 
-    // 从缓存里拿资源给 video/audio 用
-    await setCachedSrc(document.getElementById('introVideo'), '打开网站的视频.mp4');
-    await setCachedSrc(document.querySelector('.site-bg-video'), '主界面网站背景.mp4');
-    await setCachedSrc(document.getElementById('bgMusic'), '背景音乐.mp4');
+    // 现在才给视频/音频设 src（之前都是空的）
+    try {
+        await setSrcFromCache(document.getElementById('introVideo'), '打开网站的视频.mp4');
+        await setSrcFromCache(document.getElementById('bgVideo'), '主界面网站背景.mp4');
+        await setSrcFromCache(document.getElementById('bgMusic'), '背景音乐.mp4');
+    } catch (e) {
+        console.error('设置 src 失败:', e);
+    }
 
     // 隐藏加载器
     var loader = document.getElementById('loader');
@@ -1350,7 +1359,11 @@ async function boot() {
         loader.style.display = 'none';
     }
 
-    // 开始播放开场视频
+    // 播放背景视频（静音循环）
+    var bgVid = document.getElementById('bgVideo');
+    if (bgVid) bgVid.play().catch(function () {});
+
+    // 开始开场动画
     startIntroSequence();
 }
 
@@ -1363,7 +1376,7 @@ function startIntroSequence() {
     function playMusic() {
         if (!isIntroFinished) return;
         if (localStorage.getItem('pcl_music_on') === 'false') return;
-        if (bg.paused) bg.play().catch(function () {});
+        if (bg && bg.src && bg.paused) bg.play().catch(function () {});
     }
 
     introV.muted = false;
@@ -1475,7 +1488,7 @@ function toggleMusic() {
     var toggle = document.getElementById('musicToggle');
     var bgMusic = document.getElementById('bgMusic');
     if (toggle.checked) {
-        if (isIntroFinished && bgMusic.paused) bgMusic.play().catch(function () {});
+        if (isIntroFinished && bgMusic.paused && bgMusic.src) bgMusic.play().catch(function () {});
         localStorage.setItem('pcl_music_on', 'true');
         showToast('背景音乐已开启');
     } else {
@@ -1615,8 +1628,6 @@ if (isMobile) {
     document.body.style.overflow = 'hidden';
     document.querySelector('.site-wrapper').style.display = 'none';
     document.querySelector('.site-bg-video').style.display = 'none';
-    var m = document.getElementById('bgMusic');
-    if (m) { m.pause(); m.src = ''; }
 }
 
 /* ==========================================================
