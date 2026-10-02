@@ -1,22 +1,36 @@
 import { serveDir } from "https://deno.land/std@0.224.0/http/file_server.ts";
 
-const kv = await Deno.openKv();
+let kv = null;
+try {
+  kv = await Deno.openKv();
+  console.log("KV 已打开");
+} catch (e) {
+  console.error("KV 打开失败:", e);
+}
 
 async function initKV() {
-  const owner = await kv.get(["user", "owner"]);
-  if (!owner.value) {
-    const OWNER_QQ = Deno.env.get("OWNER_QQ") || "";
-    const OWNER_PWD = Deno.env.get("OWNER_PWD") || "";
-    await kv.set(["user", "owner"], {
-      qq: OWNER_QQ,
-      password: OWNER_PWD,
-      name: "快乐的小宝",
-    });
+  if (!kv) return;
+  try {
+    const owner = await kv.get(["user", "owner"]);
+    if (!owner.value) {
+      const OWNER_QQ = Deno.env.get("OWNER_QQ") || "";
+      const OWNER_PWD = Deno.env.get("OWNER_PWD") || "";
+      console.log("初始化 KV, QQ=", OWNER_QQ, "PWD长度=", OWNER_PWD.length);
+      await kv.set(["user", "owner"], {
+        qq: OWNER_QQ,
+        password: OWNER_PWD,
+        name: "快乐的小宝",
+      });
+    } else {
+      console.log("KV 已有数据, QQ=", owner.value.qq);
+    }
+  } catch (e) {
+    console.error("initKV 失败:", e);
   }
 }
 await initKV();
 
-function jsonResp(data: unknown, cors: Record<string, string>, status = 200) {
+function jsonResp(data, cors, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json", ...cors },
@@ -37,34 +51,51 @@ Deno.serve(async (req) => {
 
   if (url.pathname === "/api/login" && req.method === "POST") {
     try {
-      const { qq, password } = await req.json();
-      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
+      if (!kv) {
+        return jsonResp({ success: false, message: "KV 未初始化" }, cors, 500);
+      }
 
-      if (owner.value && owner.value.qq === qq && owner.value.password === password) {
+      const rawText = await req.text();
+      let parsed;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        return jsonResp({ success: false, message: "请求体不是合法 JSON" }, cors, 400);
+      }
+
+      const qq = parsed.qq;
+      const password = parsed.password;
+
+      const owner = await kv.get(["user", "owner"]);
+      if (!owner.value) {
+        return jsonResp({ success: false, message: "KV 中无用户数据，请重启应用" }, cors, 500);
+      }
+
+      console.log("登录尝试: 输入QQ=", qq, " KV中QQ=", owner.value.qq);
+      console.log("输入密码长度=", (password || "").length, " KV密码长度=", (owner.value.password || "").length);
+
+      if (owner.value.qq === qq && owner.value.password === password) {
         const user = { qq: owner.value.qq, name: owner.value.name, isOwner: true };
         const token = btoa(JSON.stringify(user) + "::" + Date.now());
         return jsonResp({ success: true, user, token }, cors);
       }
 
-      const GUEST_QQ = Deno.env.get("GUEST_QQ");
-      const GUEST_PWD = Deno.env.get("GUEST_PWD");
-      if (GUEST_QQ && qq === GUEST_QQ && password === GUEST_PWD) {
-        const user = { qq: GUEST_QQ, name: "用户1", isOwner: false };
-        const token = btoa(JSON.stringify(user) + "::" + Date.now());
-        return jsonResp({ success: true, user, token }, cors);
-      }
-
-      return jsonResp({ success: false, message: "账号或密码错误" }, cors);
-    } catch {
-      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+      return jsonResp({
+        success: false,
+        message: "账号或密码错误（KV中QQ=" + owner.value.qq + "）"
+      }, cors);
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      console.error("登录异常:", msg);
+      return jsonResp({ success: false, message: "服务器异常: " + msg }, cors, 500);
     }
   }
 
   if (url.pathname === "/api/rename" && req.method === "POST") {
     try {
+      if (!kv) return jsonResp({ success: false, message: "KV 未初始化" }, cors, 500);
       const { qq, password, newName } = await req.json();
-      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
-
+      const owner = await kv.get(["user", "owner"]);
       if (!owner.value || owner.value.qq !== qq || owner.value.password !== password) {
         return jsonResp({ success: false, message: "密码错误" }, cors);
       }
@@ -74,22 +105,21 @@ Deno.serve(async (req) => {
       if (String(newName).length > 20) {
         return jsonResp({ success: false, message: "名字不能超过 20 个字" }, cors);
       }
-
       const updated = { ...owner.value, name: String(newName).trim() };
       await kv.set(["user", "owner"], updated);
       const user = { qq: updated.qq, name: updated.name, isOwner: true };
       const token = btoa(JSON.stringify(user) + "::" + Date.now());
       return jsonResp({ success: true, user, token, message: "名字已更新" }, cors);
-    } catch {
-      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+    } catch (e) {
+      return jsonResp({ success: false, message: "异常: " + (e && e.message || String(e)) }, cors, 500);
     }
   }
 
   if (url.pathname === "/api/password" && req.method === "POST") {
     try {
+      if (!kv) return jsonResp({ success: false, message: "KV 未初始化" }, cors, 500);
       const { qq, oldPassword, newPassword } = await req.json();
-      const owner = await kv.get<{ qq: string; password: string; name: string }>(["user", "owner"]);
-
+      const owner = await kv.get(["user", "owner"]);
       if (!owner.value || owner.value.qq !== qq || owner.value.password !== oldPassword) {
         return jsonResp({ success: false, message: "旧密码错误" }, cors);
       }
@@ -102,12 +132,11 @@ Deno.serve(async (req) => {
       if (String(newPassword) === owner.value.password) {
         return jsonResp({ success: false, message: "新密码不能和旧密码一样" }, cors);
       }
-
       const updated = { ...owner.value, password: String(newPassword) };
       await kv.set(["user", "owner"], updated);
       return jsonResp({ success: true, message: "密码已修改成功" }, cors);
-    } catch {
-      return jsonResp({ success: false, message: "格式错误" }, cors, 400);
+    } catch (e) {
+      return jsonResp({ success: false, message: "异常: " + (e && e.message || String(e)) }, cors, 500);
     }
   }
 
