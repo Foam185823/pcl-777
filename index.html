@@ -41,9 +41,6 @@ body {
 input, textarea { user-select: text; -webkit-user-select: text; }
 ::-webkit-scrollbar { width: 0; height: 0; }
 
-/* ==========================================================
-   加载进度条页面
-   ========================================================== */
 .loader {
     position: fixed;
     inset: 0;
@@ -1202,19 +1199,13 @@ body.is-hovering-element .hovered { opacity: 1 !important; }
 })();
 
 /* ==========================================================
-   预加载 + 缓存
+   预加载 + 缓存（只加载 3 个核心文件）
    ========================================================== */
-var CACHE_NAME = 'pcl-assets-v2';
+var CACHE_NAME = 'pcl-assets-v3';
 var PRELOAD_ASSETS = [
     '打开网站的视频.mp4',
     '主界面网站背景.mp4',
-    '背景音乐.mp4',
-    '封面.png',
-    '页面图片.png',
-    '机械狂魔症封面.png',
-    '神秘美图2.jpg',
-    '微信收款码.png',
-    '支付宝收款码.png.jpg'
+    '背景音乐.mp4'
 ];
 
 function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -1252,13 +1243,13 @@ async function preloadAll() {
                 try {
                     var head = await fetch(url, { method: 'HEAD' });
                     var cl = parseInt(head.headers.get('Content-Length') || '0', 10);
-                    totalSize += cl > 0 ? cl : (2 * 1024 * 1024);
+                    totalSize += cl > 0 ? cl : (5 * 1024 * 1024);
                 } catch (e) {
-                    totalSize += 2 * 1024 * 1024;
+                    totalSize += 5 * 1024 * 1024;
                 }
             }
         } catch (e) {
-            totalSize += 2 * 1024 * 1024;
+            totalSize += 5 * 1024 * 1024;
         }
     }
 
@@ -1304,7 +1295,7 @@ async function preloadAll() {
             updateLoader(getPercent(), '已完成: ' + url2);
         } catch (e) {
             loadedCount++;
-            loadedSize += 2 * 1024 * 1024;
+            loadedSize += 5 * 1024 * 1024;
             updateLoader(getPercent(), '跳过: ' + url2);
         }
     }
@@ -1338,11 +1329,9 @@ async function boot() {
         console.error('预加载失败:', e);
     }
 
-    // 100% 后停一下，让用户看到
     updateLoader(100, '加载完成，正在进入');
     await sleep(600);
 
-    // 现在才给视频/音频设 src（之前都是空的）
     try {
         await setSrcFromCache(document.getElementById('introVideo'), '打开网站的视频.mp4');
         await setSrcFromCache(document.getElementById('bgVideo'), '主界面网站背景.mp4');
@@ -1351,7 +1340,6 @@ async function boot() {
         console.error('设置 src 失败:', e);
     }
 
-    // 隐藏加载器
     var loader = document.getElementById('loader');
     if (loader) {
         loader.classList.add('hide');
@@ -1359,11 +1347,9 @@ async function boot() {
         loader.style.display = 'none';
     }
 
-    // 播放背景视频（静音循环）
     var bgVid = document.getElementById('bgVideo');
     if (bgVid) bgVid.play().catch(function () {});
 
-    // 开始开场动画
     startIntroSequence();
 }
 
